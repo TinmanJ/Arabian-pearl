@@ -71,36 +71,6 @@
             border: 1px solid rgba(255, 255, 255, 0.3);
         }
     </style>
-
-    <!-- Firebase Setup -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, updateDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-
-        const firebaseConfig = JSON.parse(__firebase_config);
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-
-        // Expose Firebase functions to global window object for React
-        window.firebaseParams = {
-            auth,
-            db,
-            appId,
-            signInAnonymously,
-            signInWithCustomToken,
-            onAuthStateChanged,
-            collection,
-            addDoc,
-            onSnapshot,
-            doc,
-            deleteDoc,
-            updateDoc,
-            setDoc
-        };
-    </script>
 </head>
 <body class="text-slate-800 relative overflow-x-hidden min-h-screen">
 
@@ -545,14 +515,24 @@
         // --- Main Application ---
         function App() {
           // --- State ---
-          const [user, setUser] = useState(null);
-          const [expenses, setExpenses] = useState([]);
-          const [budgets, setBudgets] = useState({});
+          const [expenses, setExpenses] = useState(() => {
+            try {
+                const saved = localStorage.getItem('my-expenses-data');
+                return saved ? JSON.parse(saved) : [];
+            } catch (e) { return []; }
+          });
+
+          const [budgets, setBudgets] = useState(() => {
+            try {
+                const saved = localStorage.getItem('my-expenses-budgets');
+                return saved ? JSON.parse(saved) : {};
+            } catch (e) { return {}; }
+          });
 
           const [activeTab, setActiveTab] = useState('dashboard');
           const [filterCategories, setFilterCategories] = useState([]);
           const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
-          const [editingTransaction, setEditingTransaction] = useState(null); 
+          const [editingTransaction, setEditingTransaction] = useState(null); // New state for editing
           const [sortBy, setSortBy] = useState('date-desc');
           
           const [viewMode, setViewMode] = useState('month');
@@ -568,53 +548,13 @@
           const [remarks, setRemarks] = useState('');
 
           // --- Effects ---
-          // 1. Auth
           useEffect(() => {
-              const { auth, onAuthStateChanged, signInAnonymously, signInWithCustomToken } = window.firebaseParams;
-              
-              const initAuth = async () => {
-                  if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                      await signInWithCustomToken(auth, __initial_auth_token);
-                  } else {
-                      await signInAnonymously(auth);
-                  }
-              };
-              initAuth();
+            try { localStorage.setItem('my-expenses-data', JSON.stringify(expenses)); } catch (e) {}
+          }, [expenses]);
 
-              const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-                  setUser(currentUser);
-              });
-              return () => unsubscribe();
-          }, []);
-
-          // 2. Data Fetching
           useEffect(() => {
-              if (!user) return;
-              const { db, appId, collection, onSnapshot } = window.firebaseParams;
-
-              // Expenses Listener
-              const expensesRef = collection(db, 'artifacts', appId, 'users', user.uid, 'expenses');
-              const unsubExpenses = onSnapshot(expensesRef, (snapshot) => {
-                  const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                  setExpenses(data);
-              }, (error) => console.error("Error fetching expenses:", error));
-
-              // Budgets Listener
-              const budgetsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'budgets');
-              const unsubBudgets = onSnapshot(budgetsRef, (snapshot) => {
-                  const data = {};
-                  snapshot.docs.forEach(doc => {
-                      data[doc.id] = doc.data();
-                  });
-                  setBudgets(data);
-              }, (error) => console.error("Error fetching budgets:", error));
-
-              return () => {
-                  unsubExpenses();
-                  unsubBudgets();
-              };
-          }, [user]);
-
+            try { localStorage.setItem('my-expenses-budgets', JSON.stringify(budgets)); } catch (e) {}
+          }, [budgets]);
 
           // --- Derived State ---
           const periodExpenses = useMemo(() => {
@@ -665,6 +605,7 @@
           const currentMonthlyIncomeData = useMemo(() => {
               const data = budgets[selectedMonth];
               if (!data) return { amount: 0, note: '' };
+              // Backward compatibility: if stored as number, convert to object
               if (typeof data === 'number') return { amount: data, note: '' };
               return data;
           }, [budgets, selectedMonth]);
@@ -672,67 +613,45 @@
           const currentBalance = currentMonthlyIncomeData.amount - totalExpenses;
 
           // --- Handlers ---
-          const handleAddExpense = async (e) => {
+          const handleAddExpense = (e) => {
             e.preventDefault();
-            if (!amount || !date || !user) return;
+            if (!amount || !date) return;
 
-            const { db, appId, collection, addDoc } = window.firebaseParams;
-            try {
-                await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'expenses'), {
-                    amount: parseFloat(amount),
-                    category,
-                    date,
-                    remarks,
-                    lastEdited: new Date().toISOString()
-                });
-                setAmount('');
-                setRemarks('');
-            } catch (err) {
-                console.error("Error adding expense", err);
-            }
+            const newExpense = {
+              id: Date.now(),
+              amount: parseFloat(amount),
+              category,
+              date,
+              remarks,
+              lastEdited: new Date().toISOString()
+            };
+
+            setExpenses([newExpense, ...expenses]);
+            setAmount('');
+            setRemarks('');
           };
 
-          const handleUpdateExpense = async (updatedExpense) => {
-              if (!user) return;
-              const { db, appId, doc, updateDoc } = window.firebaseParams;
-              try {
-                  const expenseRef = doc(db, 'artifacts', appId, 'users', user.uid, 'expenses', updatedExpense.id);
-                  await updateDoc(expenseRef, {
-                      amount: updatedExpense.amount,
-                      category: updatedExpense.category,
-                      date: updatedExpense.date,
-                      remarks: updatedExpense.remarks,
-                      lastEdited: new Date().toISOString()
-                  });
-                  setEditingTransaction(null);
-              } catch (err) {
-                  console.error("Error updating expense", err);
-              }
+          const handleUpdateExpense = (updatedExpense) => {
+              const newExpenses = expenses.map(exp => 
+                  exp.id === updatedExpense.id 
+                  ? { ...updatedExpense, lastEdited: new Date().toISOString() } 
+                  : exp
+              );
+              setExpenses(newExpenses);
+              setEditingTransaction(null);
           };
 
-          const handleDelete = async (id) => {
-            if (!user) return;
+          const handleDelete = (id) => {
             if (confirm('Are you sure you want to delete this entry?')) {
-                const { db, appId, doc, deleteDoc } = window.firebaseParams;
-                try {
-                    await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'expenses', id));
-                } catch (err) {
-                    console.error("Error deleting expense", err);
-                }
+              setExpenses(expenses.filter(e => e.id !== id));
             }
           };
 
-          const handleSaveBudget = async (amount, note) => {
-              if (!user) return;
-              const { db, appId, doc, setDoc } = window.firebaseParams;
-              try {
-                  await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'budgets', selectedMonth), {
-                      amount,
-                      note
-                  });
-              } catch (err) {
-                  console.error("Error saving budget", err);
-              }
+          const handleSaveBudget = (amount, note) => {
+              setBudgets(prev => ({
+                  ...prev,
+                  [selectedMonth]: { amount, note }
+              }));
           };
 
           // --- Views ---
