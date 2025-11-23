@@ -71,6 +71,36 @@
             border: 1px solid rgba(255, 255, 255, 0.3);
         }
     </style>
+
+    <!-- Firebase Setup -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, updateDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        // Expose Firebase functions to global window object for React
+        window.firebaseParams = {
+            auth,
+            db,
+            appId,
+            signInAnonymously,
+            signInWithCustomToken,
+            onAuthStateChanged,
+            collection,
+            addDoc,
+            onSnapshot,
+            doc,
+            deleteDoc,
+            updateDoc,
+            setDoc
+        };
+    </script>
 </head>
 <body class="text-slate-800 relative overflow-x-hidden min-h-screen">
 
@@ -119,6 +149,9 @@
         const CreditCard = (props) => <IconBase {...props}><rect width="22" height="16" x="1" y="4" rx="2" ry="2" /><line x1="1" x2="23" y1="10" y2="10" /></IconBase>;
         const ArrowUpDown = (props) => <IconBase {...props}><path d="m21 16-4 4-4-4" /><path d="M17 20V4" /><path d="m3 8 4-4 4 4" /><path d="M7 4v16" /></IconBase>;
         const X = (props) => <IconBase {...props}><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></IconBase>;
+        const Cloud = (props) => <IconBase {...props}><path d="M17.5 19c0-3.037-2.463-5.5-5.5-5.5S6.5 15.963 6.5 19"/><path d="M20.292 19.5a4.5 4.5 0 0 0-3.075-7.896c-.687-3.94-4.28-6.937-8.475-6.6C4.328 5.373 1.007 9.104 1 13.5c0 3.134 2.29 5.744 5.5 6.5h13.8"/></IconBase>;
+        const Lock = (props) => <IconBase {...props}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></IconBase>;
+        const Unlock = (props) => <IconBase {...props}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></IconBase>;
 
         // --- Configuration ---
         const CATEGORIES = {
@@ -182,7 +215,7 @@
                     className={`h-full rounded-full ${config.bar} relative overflow-hidden`} 
                     style={{ width: `${percentage}%`, transition: 'width 1s cubic-bezier(0.4, 0, 0.2, 1)' }}
                   >
-                     <div className="absolute top-0 left-0 w-full h-full bg-white/20 animate-pulse"></div>
+                      <div className="absolute top-0 left-0 w-full h-full bg-white/20 animate-pulse"></div>
                   </div>
                 </div>
               </div>
@@ -319,6 +352,79 @@
                 </div>
             );
         };
+
+        // --- Sync Modal ---
+        const SyncModal = ({ isOpen, onClose, currentSyncId, onSync }) => {
+            const [syncInput, setSyncInput] = useState(currentSyncId || '');
+            const [showWarning, setShowWarning] = useState(false);
+
+            useEffect(() => {
+                setSyncInput(currentSyncId || '');
+            }, [currentSyncId, isOpen]);
+
+            if (!isOpen) return null;
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                // Basic sanitization
+                const cleanId = syncInput.trim().replace(/[^a-zA-Z0-9-_]/g, '');
+                onSync(cleanId);
+                onClose();
+            };
+
+            return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md animate-fade-in">
+                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden relative">
+                         <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-cyan-500 to-blue-500"></div>
+                         
+                        <button onClick={onClose} className="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-100 text-slate-400 transition-colors">
+                            <X size={20} />
+                        </button>
+
+                        <div className="p-8">
+                            <div className="w-16 h-16 bg-cyan-50 rounded-2xl flex items-center justify-center mb-6">
+                                <Cloud size={32} className="text-cyan-600" />
+                            </div>
+
+                            <h3 className="text-2xl font-black text-slate-800 mb-2">Sync Across Devices</h3>
+                            <p className="text-slate-500 text-sm mb-6 leading-relaxed">
+                                Enter a unique <span className="font-bold text-slate-700">Sync ID</span> (like a room code or secret phrase) to access the same data on multiple devices.
+                            </p>
+
+                            <form onSubmit={handleSubmit} className="space-y-4">
+                                <div>
+                                    <label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1 block">Sync ID / Secret Phrase</label>
+                                    <div className="relative">
+                                        <input 
+                                            type="text" 
+                                            value={syncInput}
+                                            onChange={(e) => setSyncInput(e.target.value)}
+                                            placeholder="e.g. smith-family-2024"
+                                            className="w-full px-4 py-3.5 rounded-xl bg-slate-50 border-2 border-transparent focus:bg-white focus:border-cyan-500 focus:ring-0 outline-none transition-all font-bold text-slate-700"
+                                        />
+                                        <div className="absolute right-4 top-3.5 text-slate-400 pointer-events-none">
+                                            {syncInput ? <Unlock size={20} className="text-green-500"/> : <Lock size={20}/>}
+                                        </div>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 mt-2 ml-1">
+                                        * Anyone with this ID can view and edit this data. Choose a unique, hard-to-guess ID.
+                                    </p>
+                                </div>
+
+                                <div className="pt-2">
+                                    <button 
+                                        type="submit" 
+                                        className="w-full py-3.5 rounded-xl font-bold text-white bg-cyan-600 hover:bg-cyan-700 shadow-lg shadow-cyan-200 transition-all"
+                                    >
+                                        {syncInput ? "Connect & Sync" : "Disconnect (Use Local)"}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
 
         // --- Budget Modal Component ---
         const BudgetModal = ({ isOpen, onClose, month, currentBudget, currentNote, onSave }) => {
@@ -515,24 +621,19 @@
         // --- Main Application ---
         function App() {
           // --- State ---
-          const [expenses, setExpenses] = useState(() => {
-            try {
-                const saved = localStorage.getItem('my-expenses-data');
-                return saved ? JSON.parse(saved) : [];
-            } catch (e) { return []; }
-          });
-
-          const [budgets, setBudgets] = useState(() => {
-            try {
-                const saved = localStorage.getItem('my-expenses-budgets');
-                return saved ? JSON.parse(saved) : {};
-            } catch (e) { return {}; }
-          });
+          const [user, setUser] = useState(null);
+          const [syncId, setSyncId] = useState(() => localStorage.getItem('expense_tracker_sync_id') || '');
+          const [expenses, setExpenses] = useState([]);
+          const [budgets, setBudgets] = useState({});
 
           const [activeTab, setActiveTab] = useState('dashboard');
           const [filterCategories, setFilterCategories] = useState([]);
+          
+          // Modal States
           const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
-          const [editingTransaction, setEditingTransaction] = useState(null); // New state for editing
+          const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
+          const [editingTransaction, setEditingTransaction] = useState(null); 
+          
           const [sortBy, setSortBy] = useState('date-desc');
           
           const [viewMode, setViewMode] = useState('month');
@@ -547,14 +648,68 @@
           const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
           const [remarks, setRemarks] = useState('');
 
-          // --- Effects ---
-          useEffect(() => {
-            try { localStorage.setItem('my-expenses-data', JSON.stringify(expenses)); } catch (e) {}
-          }, [expenses]);
+          // --- Helpers ---
+          // Dynamic path generator based on Sync State
+          const getCollectionPath = (type) => {
+            const { db, appId, collection } = window.firebaseParams;
+            if (syncId) {
+                // Public / Shared Path
+                // e.g. artifacts/{appId}/public/data/expenses_{syncId}
+                return collection(db, 'artifacts', appId, 'public', 'data', `${type}_${syncId}`);
+            } else {
+                // Private / User Path
+                return collection(db, 'artifacts', appId, 'users', user.uid, type);
+            }
+          };
 
+          // --- Effects ---
+          // 1. Auth
           useEffect(() => {
-            try { localStorage.setItem('my-expenses-budgets', JSON.stringify(budgets)); } catch (e) {}
-          }, [budgets]);
+              const { auth, onAuthStateChanged, signInAnonymously, signInWithCustomToken } = window.firebaseParams;
+              
+              const initAuth = async () => {
+                  if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                      await signInWithCustomToken(auth, __initial_auth_token);
+                  } else {
+                      await signInAnonymously(auth);
+                  }
+              };
+              initAuth();
+
+              const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+                  setUser(currentUser);
+              });
+              return () => unsubscribe();
+          }, []);
+
+          // 2. Data Fetching (Updated to depend on syncId)
+          useEffect(() => {
+              if (!user) return;
+              const { onSnapshot } = window.firebaseParams;
+
+              // Expenses Listener
+              const expensesRef = getCollectionPath('expenses');
+              const unsubExpenses = onSnapshot(expensesRef, (snapshot) => {
+                  const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                  setExpenses(data);
+              }, (error) => console.error("Error fetching expenses:", error));
+
+              // Budgets Listener
+              const budgetsRef = getCollectionPath('budgets');
+              const unsubBudgets = onSnapshot(budgetsRef, (snapshot) => {
+                  const data = {};
+                  snapshot.docs.forEach(doc => {
+                      data[doc.id] = doc.data();
+                  });
+                  setBudgets(data);
+              }, (error) => console.error("Error fetching budgets:", error));
+
+              return () => {
+                  unsubExpenses();
+                  unsubBudgets();
+              };
+          }, [user, syncId]); // Re-run when user OR syncId changes
+
 
           // --- Derived State ---
           const periodExpenses = useMemo(() => {
@@ -605,7 +760,6 @@
           const currentMonthlyIncomeData = useMemo(() => {
               const data = budgets[selectedMonth];
               if (!data) return { amount: 0, note: '' };
-              // Backward compatibility: if stored as number, convert to object
               if (typeof data === 'number') return { amount: data, note: '' };
               return data;
           }, [budgets, selectedMonth]);
@@ -613,45 +767,96 @@
           const currentBalance = currentMonthlyIncomeData.amount - totalExpenses;
 
           // --- Handlers ---
-          const handleAddExpense = (e) => {
+          const handleSync = (newId) => {
+              setSyncId(newId);
+              if (newId) {
+                  localStorage.setItem('expense_tracker_sync_id', newId);
+              } else {
+                  localStorage.removeItem('expense_tracker_sync_id');
+              }
+          };
+
+          const handleAddExpense = async (e) => {
             e.preventDefault();
-            if (!amount || !date) return;
+            if (!amount || !date || !user) return;
 
-            const newExpense = {
-              id: Date.now(),
-              amount: parseFloat(amount),
-              category,
-              date,
-              remarks,
-              lastEdited: new Date().toISOString()
-            };
-
-            setExpenses([newExpense, ...expenses]);
-            setAmount('');
-            setRemarks('');
-          };
-
-          const handleUpdateExpense = (updatedExpense) => {
-              const newExpenses = expenses.map(exp => 
-                  exp.id === updatedExpense.id 
-                  ? { ...updatedExpense, lastEdited: new Date().toISOString() } 
-                  : exp
-              );
-              setExpenses(newExpenses);
-              setEditingTransaction(null);
-          };
-
-          const handleDelete = (id) => {
-            if (confirm('Are you sure you want to delete this entry?')) {
-              setExpenses(expenses.filter(e => e.id !== id));
+            const { addDoc } = window.firebaseParams;
+            try {
+                await addDoc(getCollectionPath('expenses'), {
+                    amount: parseFloat(amount),
+                    category,
+                    date,
+                    remarks,
+                    lastEdited: new Date().toISOString()
+                });
+                setAmount('');
+                setRemarks('');
+            } catch (err) {
+                console.error("Error adding expense", err);
             }
           };
 
-          const handleSaveBudget = (amount, note) => {
-              setBudgets(prev => ({
-                  ...prev,
-                  [selectedMonth]: { amount, note }
-              }));
+          const handleUpdateExpense = async (updatedExpense) => {
+              if (!user) return;
+              const { doc, updateDoc, db, appId } = window.firebaseParams;
+              try {
+                  // Path construction for Update must manually match getCollectionPath logic because updateDoc needs a ref
+                  let expenseRef;
+                  if (syncId) {
+                      expenseRef = doc(db, 'artifacts', appId, 'public', 'data', `expenses_${syncId}`, updatedExpense.id);
+                  } else {
+                      expenseRef = doc(db, 'artifacts', appId, 'users', user.uid, 'expenses', updatedExpense.id);
+                  }
+
+                  await updateDoc(expenseRef, {
+                      amount: updatedExpense.amount,
+                      category: updatedExpense.category,
+                      date: updatedExpense.date,
+                      remarks: updatedExpense.remarks,
+                      lastEdited: new Date().toISOString()
+                  });
+                  setEditingTransaction(null);
+              } catch (err) {
+                  console.error("Error updating expense", err);
+              }
+          };
+
+          const handleDelete = async (id) => {
+            if (!user) return;
+            if (confirm('Are you sure you want to delete this entry?')) {
+                const { doc, deleteDoc, db, appId } = window.firebaseParams;
+                try {
+                    let expenseRef;
+                    if (syncId) {
+                        expenseRef = doc(db, 'artifacts', appId, 'public', 'data', `expenses_${syncId}`, id);
+                    } else {
+                        expenseRef = doc(db, 'artifacts', appId, 'users', user.uid, 'expenses', id);
+                    }
+                    await deleteDoc(expenseRef);
+                } catch (err) {
+                    console.error("Error deleting expense", err);
+                }
+            }
+          };
+
+          const handleSaveBudget = async (amount, note) => {
+              if (!user) return;
+              const { doc, setDoc, db, appId } = window.firebaseParams;
+              try {
+                  let budgetRef;
+                  if (syncId) {
+                      budgetRef = doc(db, 'artifacts', appId, 'public', 'data', `budgets_${syncId}`, selectedMonth);
+                  } else {
+                      budgetRef = doc(db, 'artifacts', appId, 'users', user.uid, 'budgets', selectedMonth);
+                  }
+                  
+                  await setDoc(budgetRef, {
+                      amount,
+                      note
+                  });
+              } catch (err) {
+                  console.error("Error saving budget", err);
+              }
           };
 
           // --- Views ---
@@ -661,8 +866,17 @@
                 <div>
                     <h2 className="text-4xl font-black text-slate-900 tracking-tight">Overview</h2>
                     <p className="text-slate-500 mt-2 font-medium flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                        Financial summary for {viewMode === 'month' ? new Date(selectedMonth).toLocaleDateString('en-US', {month: 'long', year: 'numeric'}) : 'selected range'}.
+                        {syncId ? (
+                            <>
+                                <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse"></span>
+                                Synced: <span className="font-mono text-xs bg-cyan-50 text-cyan-700 px-1.5 py-0.5 rounded border border-cyan-200">{syncId}</span>
+                            </>
+                        ) : (
+                            <>
+                                <span className="w-2 h-2 rounded-full bg-slate-400"></span>
+                                Local Storage (Not Synced)
+                            </>
+                        )}
                     </p>
                 </div>
                 <PeriodSelector 
@@ -878,7 +1092,7 @@
               <div className="flex flex-col xl:flex-row md:items-center justify-between gap-8 glass-card p-8 rounded-3xl relative z-20">
                 <div className="flex items-center gap-4">
                   <div className="bg-indigo-50 p-3 rounded-2xl text-indigo-600 shadow-sm">
-                     <Filter size={24}/>
+                      <Filter size={24}/>
                   </div>
                   <div>
                       <h2 className="text-xl font-black text-slate-900">History</h2>
@@ -1041,8 +1255,24 @@
                     </button>
                   </nav>
 
-                  <div className="hidden md:flex items-center gap-6">
-                    <div className="text-right">
+                  <div className="flex items-center gap-4 md:gap-6">
+                    {/* Sync Button */}
+                    <button
+                        onClick={() => setIsSyncModalOpen(true)}
+                        className={`p-2.5 rounded-xl transition-all duration-300 flex items-center gap-2 ${
+                            syncId 
+                            ? 'bg-cyan-50 text-cyan-600 hover:bg-cyan-100 border border-cyan-200 shadow-sm' 
+                            : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700'
+                        }`}
+                        title="Sync across devices"
+                    >
+                        <Cloud size={20} strokeWidth={syncId ? 2.5 : 2} className={syncId ? "animate-pulse" : ""}/>
+                        <span className="hidden md:inline text-xs font-bold uppercase tracking-wider">
+                            {syncId ? "Synced" : "Sync"}
+                        </span>
+                    </button>
+
+                    <div className="hidden md:block text-right">
                         <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Today</p>
                         <p className="text-sm font-bold text-slate-700">{new Date().toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' })}</p>
                     </div>
@@ -1071,6 +1301,13 @@
                 onClose={() => setEditingTransaction(null)}
                 expense={editingTransaction}
                 onSave={handleUpdateExpense}
+              />
+
+              <SyncModal 
+                isOpen={isSyncModalOpen}
+                onClose={() => setIsSyncModalOpen(false)}
+                currentSyncId={syncId}
+                onSync={handleSync}
               />
 
               {/* Mobile Nav */}
