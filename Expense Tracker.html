@@ -79,14 +79,16 @@
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
         // Fallback configuration for running outside the editor (e.g., GitHub Pages)
-        const defaultFirebaseConfig = {
-              apiKey: "AIzaSyAUzwEoBZffZ5GPJQpx2iSKlYjpmof1On8",
-              authDomain: "myexpensetracker-ca119.firebaseapp.com",
-              projectId: "myexpensetracker-ca119",
-              storageBucket: "myexpensetracker-ca119.firebasestorage.app",
-              messagingSenderId: "143099032860",
-              appId: "1:143099032860:web:8190107d8d404fd68176d9",
-              measurementId: "G-EBS0JEXLGQ"
+        const firebaseConfig = {
+          apiKey: "AIzaSyAUzwEoBZffZ5GPJQpx2iSKlYjpmof1On8",
+          authDomain: "myexpensetracker-ca119.firebaseapp.com",
+          projectId: "myexpensetracker-ca119",
+          storageBucket: "myexpensetracker-ca119.firebasestorage.app",
+          messagingSenderId: "143099032860",
+          appId: "1:143099032860:web:8190107d8d404fd68176d9",
+          measurementId: "G-EBS0JEXLGQ"
+        };
+
         };
 
         let firebaseConfig;
@@ -1437,3 +1439,4 @@
     </script>
 </body>
 </html>
+
