@@ -78,7 +78,25 @@
         import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, updateDoc, setDoc, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
-        const firebaseConfig = JSON.parse(__firebase_config);
+        // Fallback configuration for running outside the editor (e.g., GitHub Pages)
+        const defaultFirebaseConfig = {
+              apiKey: "AIzaSyAUzwEoBZffZ5GPJQpx2iSKlYjpmof1On8",
+              authDomain: "myexpensetracker-ca119.firebaseapp.com",
+              projectId: "myexpensetracker-ca119",
+              storageBucket: "myexpensetracker-ca119.firebasestorage.app",
+              messagingSenderId: "143099032860",
+              appId: "1:143099032860:web:8190107d8d404fd68176d9",
+              measurementId: "G-EBS0JEXLGQ"
+        };
+
+        let firebaseConfig;
+        try {
+            // Try to use the environment variable if it exists
+            firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : defaultFirebaseConfig;
+        } catch (e) {
+            // Fallback to default config if parsing fails or variable is missing
+            firebaseConfig = defaultFirebaseConfig;
+        }
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
@@ -103,6 +121,9 @@
             getDocs,
             writeBatch
         };
+
+        // Signal that Firebase is ready
+        window.dispatchEvent(new Event('firebase-ready'));
     </script>
 </head>
 <body class="text-slate-800 relative overflow-x-hidden min-h-screen">
@@ -665,6 +686,7 @@
         // --- Main Application ---
         function App() {
           // --- State ---
+          const [isFirebaseInitialized, setIsFirebaseInitialized] = useState(false);
           const [user, setUser] = useState(null);
           const [syncId, setSyncId] = useState(() => localStorage.getItem('expense_tracker_sync_id') || '');
           const [expenses, setExpenses] = useState([]);
@@ -694,28 +716,47 @@
           const [remarks, setRemarks] = useState('');
 
           // --- Helpers ---
-          // Dynamic path generator based on Sync State
           const getCollectionPath = (type) => {
+            if (!window.firebaseParams) return null;
             const { db, appId, collection } = window.firebaseParams;
             if (syncId) {
-                // Public / Shared Path
                 return collection(db, 'artifacts', appId, 'public', 'data', `${type}_${syncId}`);
             } else {
-                // Private / User Path
                 return collection(db, 'artifacts', appId, 'users', user.uid, type);
             }
           };
 
           // --- Effects ---
-          // 1. Auth
+          // 1. Wait for Firebase Params
           useEffect(() => {
+              if (window.firebaseParams) {
+                  setIsFirebaseInitialized(true);
+              } else {
+                  const handleReady = () => setIsFirebaseInitialized(true);
+                  window.addEventListener('firebase-ready', handleReady);
+                  return () => window.removeEventListener('firebase-ready', handleReady);
+              }
+          }, []);
+
+          // 2. Auth (Depends on Initialization)
+          useEffect(() => {
+              if (!isFirebaseInitialized) return;
               const { auth, onAuthStateChanged, signInAnonymously, signInWithCustomToken } = window.firebaseParams;
               
               const initAuth = async () => {
-                  if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                      await signInWithCustomToken(auth, __initial_auth_token);
-                  } else {
-                      await signInAnonymously(auth);
+                  try {
+                      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                          await signInWithCustomToken(auth, __initial_auth_token);
+                      } else {
+                          await signInAnonymously(auth);
+                      }
+                  } catch (error) {
+                      console.error("Auth failed, falling back to anonymous:", error);
+                      try {
+                          await signInAnonymously(auth);
+                      } catch (anonError) {
+                          console.error("Anonymous auth also failed:", anonError);
+                      }
                   }
               };
               initAuth();
@@ -724,21 +765,19 @@
                   setUser(currentUser);
               });
               return () => unsubscribe();
-          }, []);
+          }, [isFirebaseInitialized]);
 
-          // 2. Data Fetching (Updated to depend on syncId)
+          // 3. Data Fetching
           useEffect(() => {
-              if (!user) return;
+              if (!user || !isFirebaseInitialized) return;
               const { onSnapshot } = window.firebaseParams;
 
-              // Expenses Listener
               const expensesRef = getCollectionPath('expenses');
               const unsubExpenses = onSnapshot(expensesRef, (snapshot) => {
                   const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                   setExpenses(data);
               }, (error) => console.error("Error fetching expenses:", error));
 
-              // Budgets Listener
               const budgetsRef = getCollectionPath('budgets');
               const unsubBudgets = onSnapshot(budgetsRef, (snapshot) => {
                   const data = {};
@@ -752,7 +791,7 @@
                   unsubExpenses();
                   unsubBudgets();
               };
-          }, [user, syncId]); // Re-run when user OR syncId changes
+          }, [user, syncId, isFirebaseInitialized]);
 
 
           // --- Derived State ---
@@ -785,18 +824,12 @@
               data = data.filter(e => filterCategories.includes(e.category));
             }
             
-            // Sort Logic
             return data.sort((a, b) => {
                 switch (sortBy) {
-                    case 'date-asc':
-                        return new Date(a.date) - new Date(b.date);
-                    case 'amount-desc':
-                        return b.amount - a.amount;
-                    case 'amount-asc':
-                        return a.amount - b.amount;
-                    case 'date-desc':
-                    default:
-                        return new Date(b.date) - new Date(a.date);
+                    case 'date-asc': return new Date(a.date) - new Date(b.date);
+                    case 'amount-desc': return b.amount - a.amount;
+                    case 'amount-asc': return a.amount - b.amount;
+                    case 'date-desc': default: return new Date(b.date) - new Date(a.date);
                 }
             });
           }, [periodExpenses, filterCategories, sortBy]);
@@ -812,8 +845,8 @@
 
           // --- Handlers ---
           const handleSync = async (newId, shouldCopy) => {
+              if (!isFirebaseInitialized) return;
               if (newId && shouldCopy) {
-                  // Copy local data to the new ID
                   try {
                       const { db, appId, collection, getDocs, writeBatch, doc } = window.firebaseParams;
                       const privateExpensesRef = collection(db, 'artifacts', appId, 'users', user.uid, 'expenses');
@@ -852,7 +885,7 @@
 
           const handleAddExpense = async (e) => {
             e.preventDefault();
-            if (!amount || !date || !user) return;
+            if (!amount || !date || !user || !isFirebaseInitialized) return;
 
             const { addDoc } = window.firebaseParams;
             try {
@@ -871,7 +904,7 @@
           };
 
           const handleUpdateExpense = async (updatedExpense) => {
-              if (!user) return;
+              if (!user || !isFirebaseInitialized) return;
               const { doc, updateDoc, db, appId } = window.firebaseParams;
               try {
                   let expenseRef;
@@ -895,7 +928,7 @@
           };
 
           const confirmDelete = async () => {
-            if (!user || !deletingId) return;
+            if (!user || !deletingId || !isFirebaseInitialized) return;
             const { doc, deleteDoc, db, appId } = window.firebaseParams;
             try {
                 let expenseRef;
@@ -912,7 +945,7 @@
           };
 
           const handleSaveBudget = async (amount, note) => {
-              if (!user) return;
+              if (!user || !isFirebaseInitialized) return;
               const { doc, setDoc, db, appId } = window.firebaseParams;
               try {
                   let budgetRef;
@@ -932,6 +965,15 @@
           };
 
           // --- Views ---
+          if (!isFirebaseInitialized) {
+              return (
+                  <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 text-slate-600 gap-4">
+                      <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-indigo-600"></div>
+                      <p className="font-medium animate-pulse">Connecting to Cloud...</p>
+                  </div>
+              );
+          }
+
           const renderDashboard = () => (
             <div className="space-y-8 animate-fade-in max-w-6xl mx-auto">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b border-slate-200/50 pb-8">
