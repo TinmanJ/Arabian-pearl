@@ -78,7 +78,16 @@
         import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, updateDoc, setDoc, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
-        const firebaseConfig = JSON.parse(__firebase_config);
+        const firebaseConfig = {
+              apiKey: "AIzaSyAUzwEoBZffZ5GPJQpx2iSKlYjpmof1On8",
+              authDomain: "myexpensetracker-ca119.firebaseapp.com",
+              projectId: "myexpensetracker-ca119",
+              storageBucket: "myexpensetracker-ca119.firebasestorage.app",
+              messagingSenderId: "143099032860",
+              appId: "1:143099032860:web:8190107d8d404fd68176d9",
+              measurementId: "G-EBS0JEXLGQ"
+            };
+
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
@@ -1387,3 +1396,4 @@
     </script>
 </body>
 </html>
+
